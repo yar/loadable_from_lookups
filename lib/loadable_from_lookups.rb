@@ -44,27 +44,27 @@ module LoadableFromLookups
     def from_lookup(filename_part)
       Dir.chdir(self.options[:dir]) do
         filename = filename_part + self.options[:postfix] + LOOKUP_EXTENSIONS[self.options[:format]]
-        cached_obj = Rails.cache.fetch(filename + "_" + File.mtime(filename).to_i.to_s, :expires_in => 6.hours) do
-          obj = self.new
-          obj.data = obj.read_lookup(filename)          
+        obj = self.new
+        # obj.data = Rails.cache.fetch(filename + "_data_" + File.mtime(filename).to_i.to_s, :expires_in => 6.hours) do
+        #   obj.read_lookup(filename)
+        # end
+        obj.data = obj.read_lookup(filename)
 
-          if obj.vars["_gmtissued"] # As in forecasts
-            begin
-              obj.issued_at = Time.gm(*(ParseDate.parsedate(obj.vars["_gmtissued"])))
-            rescue
-              logger.error "Wrong datetime: " + vars["_gmtissued"] + $!
-              obj.issued_at = Time.now.utc
-            end          
-          else # As in metars
-            begin
-              obj.issued_at = Time.parse(obj.vars["_date0"] + " " + obj.vars["_time0"])
-            rescue
-              obj.issued_at = Time.now.utc # Silently!
-            end          
-          end
-          obj
+        if obj.vars["_gmtissued"] # As in forecasts
+          begin
+            obj.issued_at = Time.gm(*(ParseDate.parsedate(obj.vars["_gmtissued"])))
+          rescue
+            logger.error "Wrong datetime: " + vars["_gmtissued"] + $!
+            obj.issued_at = Time.now.utc
+          end          
+        else # As in metars
+          begin
+            obj.issued_at = Time.parse(obj.vars["_date0"] + " " + obj.vars["_time0"])
+          rescue
+            obj.issued_at = Time.now.utc # Silently!
+          end          
         end
-        return cached_obj.frozen? ? cached_obj.clone : cached_obj
+        obj
       end
     end
   
