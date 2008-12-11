@@ -9,7 +9,6 @@
 # Importing the records into the database is beyond the scope of this mixin because
 # it requires interaction of multiple models, e.g. missing locations, countries.
 require "iconv"
-require "memcache_util"
 
 module LoadableFromLookups
   UNWANTED_CHARS = /[^\w\d_ -]/
@@ -45,7 +44,7 @@ module LoadableFromLookups
     def from_lookup(filename_part)
       Dir.chdir(self.options[:dir]) do
         filename = filename_part + self.options[:postfix] + LOOKUP_EXTENSIONS[self.options[:format]]
-        cached_obj = Cache.get(filename + "_" + File.mtime(filename).to_i.to_s, 3600*6) do
+        cached_obj = Rails.cache.fetch(filename + "_" + File.mtime(filename).to_i.to_s, :expires_in => 6.hours) do
           obj = self.new
           obj.data = obj.read_lookup(filename)          
 
@@ -65,7 +64,7 @@ module LoadableFromLookups
           end
           obj
         end
-        return cached_obj
+        return cached_obj.frozen? ? cached_obj.clone : cached_obj
       end
     end
   
