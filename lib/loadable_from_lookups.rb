@@ -9,6 +9,7 @@
 # Importing the records into the database is beyond the scope of this mixin because
 # it requires interaction of multiple models, e.g. missing locations, countries.
 require "iconv"
+# require "memcache_util"
 
 module LoadableFromLookups
   UNWANTED_CHARS = /[^\w\d_ -]/
@@ -44,11 +45,13 @@ module LoadableFromLookups
     def from_lookup(filename_part)
       Dir.chdir(self.options[:dir]) do
         filename = filename_part + self.options[:postfix] + LOOKUP_EXTENSIONS[self.options[:format]]
+        mtime = File.mtime(filename).to_i
         obj = self.new
-        # obj.data = Rails.cache.fetch(filename + "_data_" + File.mtime(filename).to_i.to_s, :expires_in => 6.hours) do
-        #   obj.read_lookup(filename)
-        # end
-        obj.data = obj.read_lookup(filename)
+        obj.data = Rails.cache.fetch(filename + "_data_" + mtime.to_s, :expires_in => 6.hours) do
+          obj.read_lookup(filename)          
+        end
+        obj.lookup_timestamp = mtime
+        obj.lookup_filename = filename
 
         if obj.vars["_gmtissued"] # As in forecasts
           begin
@@ -64,7 +67,7 @@ module LoadableFromLookups
             obj.issued_at = Time.now.utc # Silently!
           end          
         end
-        obj
+        return obj
       end
     end
   
@@ -73,14 +76,16 @@ module LoadableFromLookups
   module InstanceMethods
     # getter
     def vars
-      if data.mb_chars.size == 65535
-        data.gsub! /,[^,]*\Z/m, "}"
-      end
-			begin
-				eval(read_attribute("data"))      
-			rescue SyntaxError
-				raise "Cannot eval for forecast #{id}"
-			end
+      Rails.cache.fetch("#{self.class.to_s}/#{lookup_filename||id}/#{lookup_timestamp}", :expires_in => 6.hours) do
+        if data.mb_chars.size == 65535
+          data.gsub! /,[^,]*\Z/m, "}"
+        end
+  			begin
+  				eval(read_attribute("data"))      
+  			rescue SyntaxError
+  				raise "Cannot eval for forecast #{id}"
+  			end
+  		end
     end
     
     # setter
@@ -123,6 +128,8 @@ module LoadableFromLookups
   
   # supported formats are :php and :ruby_hash 
   def loadable_from_lookups(options)
+    self.send :attr, :lookup_timestamp, true
+    self.send :attr, :lookup_filename, true
     self.send :extend, ClassMethods
     self.send :include, InstanceMethods
     self.options = options
