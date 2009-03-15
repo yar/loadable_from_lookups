@@ -76,7 +76,7 @@ module LoadableFromLookups
   module InstanceMethods
     # getter
     def vars
-      Rails.cache.fetch("#{self.class.to_s}/#{lookup_filename||id}/#{lookup_timestamp}", :expires_in => 6.hours) do
+      @vars ||= Rails.cache.fetch("#{self.class.to_s}/#{lookup_filename||id}/#{lookup_timestamp}", :expires_in => 6.hours) do
         if data.mb_chars.size == 65535
           data.gsub! /,[^,]*\Z/m, "}"
         end
@@ -96,7 +96,19 @@ module LoadableFromLookups
       end
       str += "}"
       write_attribute("data", str)      
-    end    
+    end
+    
+    def p_period(key, i)
+      vars["_p#{key}_#{i}"]
+    end
+
+    def t_period(key, i)
+      vars["_t#{key}_#{i}"]
+    end
+
+    def d_period(key, i)
+      vars["_d#{key}_#{i}"]
+    end
 
     # returns vars hash
     def read_lookup(path)
