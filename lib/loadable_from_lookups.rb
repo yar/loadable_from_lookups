@@ -43,52 +43,77 @@ module LoadableFromLookups
     end
 
     def from_lookup(filename_part)
+      obj = self.new
+
+      # Load primary lookup
       Dir.chdir(self.options[:dir]) do
         filename = filename_part + self.options[:postfix] + LOOKUP_EXTENSIONS[self.options[:format]]
         mtime = File.mtime(filename).to_i
-        obj = self.new
-        obj.data = Rails.cache.fetch(filename + "_data_" + mtime.to_s, :expires_in => 6.hours) do
+        obj.data = Rails.cache.fetch(filename + "_data_" + mtime.to_s, :expires_in => 6.hours) do # TODO (literal const.)
           obj.read_lookup(filename)          
         end
         obj.lookup_timestamp = mtime
         obj.lookup_filename = filename
-
-        if obj.vars["_gmtissued"] # As in forecasts
-          begin
-            obj.issued_at = Time.gm(*(ParseDate.parsedate(obj.vars["_gmtissued"])))
-          rescue
-            logger.error "Wrong datetime: " + vars["_gmtissued"] + $!
-            obj.issued_at = Time.now.utc
-          end          
-        else # As in metars
-          begin
-            obj.issued_at = Time.parse(obj.vars["_date0"] + " " + obj.vars["_time0"])
-          rescue
-            obj.issued_at = Time.now.utc # Silently!
-          end          
-        end
-        return obj
       end
+        
+      # Load all dependent lookups
+      if options[:dependent]
+        options[:dependent].each do |dep_options|
+          Dir.chdir(dep_options[:dir]) do
+            if dep_options[:key]
+              dep_filename_part = obj.vars_without_caching[dep_options[:key]]
+            else
+              dep_filename_part = filename_part
+            end
+            dep_filename = dep_filename_part + dep_options[:postfix] + LOOKUP_EXTENSIONS[dep_options[:format]]
+            dep_mtime = File.mtime(dep_filename).to_i
+            dep_data = Rails.cache.fetch(dep_filename + "_data_" + dep_mtime.to_s, :expires_in => 6.hours) do
+              obj.read_lookup(dep_filename, dep_options[:format])
+            end
+            obj.data += ".merge(" + dep_data + ")"
+            obj.lookup_filename += "+#{dep_filename}"
+            obj.lookup_timestamp = [obj.lookup_timestamp, dep_mtime].max
+          end
+        end
+      end
+
+      if obj.vars["_gmtissued"] # As in forecasts
+        begin
+          obj.issued_at = Time.gm(*(ParseDate.parsedate(obj.vars["_gmtissued"])))
+        rescue
+          logger.error "Wrong datetime: " + vars["_gmtissued"] + $!
+          obj.issued_at = Time.now.utc
+        end          
+      else # As in metars
+        begin
+          obj.issued_at = Time.parse(obj.vars["_date0"] + " " + obj.vars["_time0"])
+        rescue
+          obj.issued_at = Time.now.utc # Silently! (TODO)
+        end          
+      end
+      return obj
     end
   
   end
     
   module InstanceMethods
-    # getter
     def vars
       @vars ||= Rails.cache.fetch("#{self.class.to_s}/#{lookup_filename||id}/#{lookup_timestamp}", :expires_in => 6.hours) do
-        if data.mb_chars.size == 65535
-          data.gsub! /,[^,]*\Z/m, "}"
-        end
-  			begin
-  				eval(read_attribute("data"))      
-  			rescue SyntaxError
-  				raise "Cannot eval for forecast #{id}"
-  			end
+        vars_without_caching
   		end
     end
     
-    # setter
+    def vars_without_caching
+      if data.mb_chars.size == 65535
+        data.gsub! /,[^,]*\Z/m, "}"
+      end
+			begin
+				eval(read_attribute("data"))      
+			rescue SyntaxError
+				raise "Cannot eval for forecast #{id}"
+			end
+    end
+    
     def vars=(values)
       str = "{\n"
       values.each do |key, value|
@@ -96,6 +121,11 @@ module LoadableFromLookups
       end
       str += "}"
       write_attribute("data", str)      
+    end
+    
+    def data=(str)
+      write_attribute("data", str)
+      @vars = nil # bust the cache
     end
     
     def p_period(key, i)
@@ -111,8 +141,9 @@ module LoadableFromLookups
     end
 
     # returns vars hash
-    def read_lookup(path)
-      case self.class.options[:format]
+    def read_lookup(path, format=nil)
+      format ||= self.class.options[:format]
+      case format
       when :ruby_hash
         content = File.read(path)
       when :php # old php format
