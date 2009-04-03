@@ -140,6 +140,18 @@ module LoadableFromLookups
       vars["_d#{key}_#{i}"]
     end
 
+    def p_period_with_dot(key, i)
+      vars["_p#{key}.#{i}"]
+    end
+
+    def t_period_with_dot(key, i)
+      vars["_t#{key}.#{i}"]
+    end
+
+    def d_period_with_dot(key, i)
+      vars["_d#{key}.#{i}"]
+    end
+
     # returns vars hash
     def read_lookup(path, format=nil)
       format ||= self.class.options[:format]
