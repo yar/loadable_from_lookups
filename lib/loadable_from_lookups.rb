@@ -36,6 +36,9 @@ module LoadableFromLookups
               .gsub(self.options[:unwanted_chars], "")
             obj = self.new
             obj.data = obj.read_lookup(filename)          
+            mtime = File.mtime(filename).to_i
+            obj.lookup_timestamp = mtime
+            obj.lookup_filename = filename
             yield obj, location_name
           end
         end
