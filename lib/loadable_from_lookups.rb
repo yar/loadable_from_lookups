@@ -151,6 +151,14 @@ module LoadableFromLookups
     def d_period_with_dot(key, i)
       vars["_d#{key}.#{i}"]
     end
+    
+    def hr_period(key, i)
+      vars["_#{key}_hr_#{i}"]
+    end
+
+    def six_hr_period(key, i)
+      vars["_#{key}_6h_#{i}"]
+    end
 
     # returns vars hash
     def read_lookup(path, format=nil)
