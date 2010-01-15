@@ -36,6 +36,9 @@ module LoadableFromLookups
               .gsub(self.options[:unwanted_chars], "")
             obj = self.new
             obj.data = obj.read_lookup(filename)          
+            mtime = File.mtime(filename).to_i
+            obj.lookup_timestamp = mtime
+            obj.lookup_filename = filename
             yield obj, location_name
           end
         end
@@ -98,9 +101,10 @@ module LoadableFromLookups
     
   module InstanceMethods
     def vars
-      @vars ||= Rails.cache.fetch("#{self.class.to_s}/#{lookup_filename||id}/#{lookup_timestamp}", :expires_in => 6.hours) do
+      tmp = @vars ||= Rails.cache.fetch("#{self.class.to_s}/#{lookup_filename||id}/#{lookup_timestamp}", :expires_in => 6.hours) do
         vars_without_caching
   		end
+      tmp.dup
     end
     
     def vars_without_caching
