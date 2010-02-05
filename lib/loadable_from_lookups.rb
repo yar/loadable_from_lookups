@@ -160,6 +160,10 @@ module LoadableFromLookups
       vars["_#{key}_hr_#{i}"]
     end
 
+    def day_period(key, i)
+      vars["_#{key}_day_#{i}"]
+    end
+
     def six_hr_period(key, i)
       vars["_#{key}_6h_#{i}"]
     end
