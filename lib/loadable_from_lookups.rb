@@ -101,10 +101,12 @@ module LoadableFromLookups
     
   module InstanceMethods
     def vars
-      tmp = @vars ||= Rails.cache.fetch("#{self.class.to_s}/#{lookup_filename||id}/#{lookup_timestamp}", :expires_in => 6.hours) do
+      return @vars if @vars
+      
+      tmp = Rails.cache.fetch("#{self.class.to_s}/#{lookup_filename||id}/#{lookup_timestamp}", :expires_in => 6.hours) do
         vars_without_caching
   		end
-      tmp.dup
+      return @vars = tmp.dup
     end
     
     def vars_without_caching
