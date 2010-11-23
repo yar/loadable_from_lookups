@@ -82,9 +82,9 @@ module LoadableFromLookups
 
       if obj.vars["_gmtissued"] # As in forecasts
         begin
-          obj.issued_at = Time.gm(*(ParseDate.parsedate(obj.vars["_gmtissued"])))
+          obj.issued_at = Time.gm(*(Time.parse(obj.vars["_gmtissued"])))
         rescue
-          logger.error "Wrong datetime: " + vars["_gmtissued"] + $!
+          logger.error "Wrong datetime: #{obj.vars["_gmtissued"]}, error message: #{$!}"
           obj.issued_at = Time.now.utc
         end          
       else # As in metars
