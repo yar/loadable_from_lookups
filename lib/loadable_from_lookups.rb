@@ -60,6 +60,7 @@ module LoadableFromLookups
       end
         
       # Load all dependent lookups
+			begin
       if options[:dependent]
         options[:dependent].each do |dep_options|
           Dir.chdir(dep_options[:dir]) do
@@ -79,6 +80,9 @@ module LoadableFromLookups
           end
         end
       end
+			rescue
+          logger.error $!
+			end
 
       if obj.vars["_gmtissued"] # As in forecasts
         begin
