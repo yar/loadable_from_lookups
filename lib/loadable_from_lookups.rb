@@ -61,34 +61,34 @@ module LoadableFromLookups
         
       # Load all dependent lookups
 			begin
-      if options[:dependent]
-        options[:dependent].each do |dep_options|
-          Dir.chdir(dep_options[:dir]) do
-            if dep_options[:key]
-              dep_filename_part = obj.vars_without_caching[dep_options[:key]]
-            else
-              dep_filename_part = filename_part
-            end
-            dep_filename = dep_filename_part + dep_options[:postfix] + LOOKUP_EXTENSIONS[dep_options[:format]]
-            dep_mtime = File.mtime(dep_filename).to_i
-            dep_data = Rails.cache.fetch(dep_filename + "_data_" + dep_mtime.to_s, :expires_in => 6.hours) do
-              obj.read_lookup(dep_filename, dep_options[:format])
-            end
-            obj.data += ".merge(" + dep_data + ")"
-            obj.lookup_filename += "+#{dep_filename}"
-            obj.lookup_timestamp = [obj.lookup_timestamp, dep_mtime].max
-          end
-        end
-      end
+				if options[:dependent]
+					options[:dependent].each do |dep_options|
+						Dir.chdir(dep_options[:dir]) do
+							if dep_options[:key]
+								dep_filename_part = obj.vars_without_caching[dep_options[:key]]
+							else
+								dep_filename_part = filename_part
+							end
+							dep_filename = dep_filename_part + dep_options[:postfix] + LOOKUP_EXTENSIONS[dep_options[:format]]
+							dep_mtime = File.mtime(dep_filename).to_i
+							dep_data = Rails.cache.fetch(dep_filename + "_data_" + dep_mtime.to_s, :expires_in => 6.hours) do
+								obj.read_lookup(dep_filename, dep_options[:format])
+							end
+							obj.data += ".merge(" + dep_data + ")"
+							obj.lookup_filename += "+#{dep_filename}"
+							obj.lookup_timestamp = [obj.lookup_timestamp, dep_mtime].max
+						end
+					end
+				end
 			rescue
-          logger.error $!
+        logger.error $!
 			end
 
       if obj.vars["_gmtissued"] # As in forecasts
         begin
-          obj.issued_at = Time.gm(*(ParseDate.parsedate(obj.vars["_gmtissued"])))
+          obj.issued_at = Time.gm(*(Time.parse(obj.vars["_gmtissued"])))
         rescue
-          logger.error "Wrong datetime: " + vars["_gmtissued"] + $!
+          logger.error "Wrong datetime: #{obj.vars["_gmtissued"]}, error message: #{$!}"
           obj.issued_at = Time.now.utc
         end          
       else # As in metars
@@ -99,6 +99,9 @@ module LoadableFromLookups
         end          
       end
       return obj
+    rescue Errno::ENOENT
+			logger.error $!
+      return nil
     end
   
   end
