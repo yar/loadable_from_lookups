@@ -95,6 +95,8 @@ module LoadableFromLookups
         end          
       end
       return obj
+    rescue Errno::ENOENT
+      return nil
     end
   
   end
