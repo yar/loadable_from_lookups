@@ -192,6 +192,7 @@ module LoadableFromLookups
         content = File.read(path)
         content.gsub!('"', '\"')
         content.gsub!(/^s(_.*)\|(.*)$/, '"\1" => "\2",')
+        content.gsub!(/^([^_][^|]*)\|(.*)$/, '"\1" => "\2",')
         content.gsub!('_top', '_max')
         content.gsub!('_bot', '_min')
         content.gsub!('rztop', 'rzmax')
