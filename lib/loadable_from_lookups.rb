@@ -126,7 +126,7 @@ module LoadableFromLookups
 			  if self.class.options[:exceptions_unchanged]
 			    raise
 				else
-  				raise "Cannot eval for forecast #{id}"
+  				raise "Cannot eval for forecast #{lookup_filename||id}"
 			  end
 			end
     end
