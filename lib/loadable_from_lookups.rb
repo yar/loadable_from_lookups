@@ -123,7 +123,7 @@ module LoadableFromLookups
 			begin
 				eval(read_attribute("data"))      
 			rescue SyntaxError
-			  if options[:exceptions_unchanged]
+			  if self.class.options[:exceptions_unchanged]
 			    raise
 				else
   				raise "Cannot eval for forecast #{id}"
