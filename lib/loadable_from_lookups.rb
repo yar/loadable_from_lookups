@@ -117,9 +117,9 @@ module LoadableFromLookups
     end
     
     def vars_without_caching
-      if data.mb_chars.size == 65535
-        data.gsub! /,[^,]*\Z/m, "}"
-      end
+      # if data.mb_chars.size == 65535
+      #   data.gsub! /,[^,]*\Z/m, "}"
+      # end
 			begin
 				eval(read_attribute("data"))      
 			rescue SyntaxError
