@@ -195,6 +195,7 @@ module LoadableFromLookups
       when :lookup
         content = File.read(path)
         content.gsub!('"', '\"')
+        content.gsub!('#', '\#')
         content.gsub!(/^s(_.*)\|(.*)$/, '"\1" => "\2",')
         content.gsub!(/^([^_][^|]*)\|(.*)$/, '"\1" => "\2",')
         content.gsub!('_top', '_max')
