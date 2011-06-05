@@ -100,7 +100,7 @@ module LoadableFromLookups
       end
       return obj
     rescue Errno::ENOENT
-			logger.error $!
+			logger.error "#{$!}"
       return nil
     end
   
