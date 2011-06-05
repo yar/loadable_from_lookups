@@ -126,7 +126,7 @@ module LoadableFromLookups
 			  if self.class.options[:exceptions_unchanged]
 			    raise
 				else
-  				raise "Cannot eval for forecast #{id}"
+  				raise "Cannot eval for forecast #{lookup_filename||id}"
 			  end
 			end
     end
@@ -195,6 +195,7 @@ module LoadableFromLookups
       when :lookup
         content = File.read(path)
         content.gsub!('"', '\"')
+        content.gsub!('#', '\#')
         content.gsub!(/^s(_.*)\|(.*)$/, '"\1" => "\2",')
         content.gsub!(/^([^_][^|]*)\|(.*)$/, '"\1" => "\2",')
         content.gsub!('_top', '_max')
