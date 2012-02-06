@@ -53,7 +53,7 @@ module LoadableFromLookups
       Dir.chdir(self.options[:dir]) do
         filename = filename_part + self.options[:postfix] + LOOKUP_EXTENSIONS[self.options[:format]]
         mtime = File.mtime(filename)
-        obj.data = Rails.cache.fetch(filename + "_data_" + mtime.to_s, :expires_in => 6.hours) do # TODO (literal const.)
+        obj.data = Rails.cache.fetch(filename + "_data_" + mtime.to_i.to_s, :expires_in => 6.hours) do # TODO (literal const.)
           obj.read_lookup(filename)          
         end
         obj.lookup_mtime = mtime
