@@ -36,8 +36,9 @@ module LoadableFromLookups
               .gsub(self.options[:unwanted_chars], "")
             obj = self.new
             obj.data = obj.read_lookup(filename)          
-            mtime = File.mtime(filename).to_i
-            obj.lookup_timestamp = mtime
+            mtime = File.mtime(filename)
+            obj.lookup_mtime = mtime
+            obj.lookup_timestamp = mtime.to_i
             obj.lookup_filename = filename
             yield obj, location_name
           end
@@ -51,11 +52,12 @@ module LoadableFromLookups
       # Load primary lookup
       Dir.chdir(self.options[:dir]) do
         filename = filename_part + self.options[:postfix] + LOOKUP_EXTENSIONS[self.options[:format]]
-        mtime = File.mtime(filename).to_i
+        mtime = File.mtime(filename)
         obj.data = Rails.cache.fetch(filename + "_data_" + mtime.to_s, :expires_in => 6.hours) do # TODO (literal const.)
           obj.read_lookup(filename)          
         end
-        obj.lookup_timestamp = mtime
+        obj.lookup_mtime = mtime
+        obj.lookup_timestamp = mtime.to_i
         obj.lookup_filename = filename
       end
         
@@ -213,6 +215,7 @@ module LoadableFromLookups
   
   # supported formats are :php and :ruby_hash 
   def loadable_from_lookups(options)
+    self.send :attr, :lookup_mtime, true
     self.send :attr, :lookup_timestamp, true
     self.send :attr, :lookup_filename, true
     self.send :extend, ClassMethods
