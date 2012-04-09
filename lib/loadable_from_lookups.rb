@@ -209,31 +209,33 @@ module LoadableFromLookups
     # returns vars hash
     def read_lookup(path, format=nil)
       format ||= self.class.options[:format]
+
+      raw_content = File.read(path)
+
+      content = raw_content.filter_utf8
+      if content != raw_content
+        logger.error("UNICODE PROBLEM: characters illegal for utf8 found in #{path}, removing - watch out for misspelled words!")
+      end
+
       case format
       when :ruby_hash
-        content = File.read(path)
+        # do nothing
       when :php # old php format
-        content = File.read(path)
         content.gsub!("<?\n$vars = array(\n", "{")
         content.gsub!("<?$vars = array(\n", "{")
         content.gsub!(");\n?>", "}")
       when :lookup
-        content = File.read(path)
         content.gsub!('"', '\"')
         content.gsub!('#', '\#')
-        content.gsub!(/^s(_.*)\|(.*)$/, '"\1" => "\2",')
-        content.gsub!(/^([^_][^|]*)\|(.*)$/, '"\1" => "\2",')
+        content.gsub!(/^s(_.*?)\|(.*?)$/, '"\1" => "\2",')
+        content.gsub!(/^([^_"][^|]*?)\|(.*?)$/, '"\1" => "\2",')
         content.gsub!('_top', '_max')
         content.gsub!('_bot', '_min')
         content.gsub!('rztop', 'rzmax')
         content.gsub!('rzbot', 'rzmin')
         content = "{" + content + "}"
       end
-      filtered_content = content.filter_utf8
-      if filtered_content != content
-        logger.error("Characters illegal for utf8 found in #{path}, removing - watch out for misspelled words!")
-      end
-      filtered_content
+      content
     end
   end
   
