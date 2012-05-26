@@ -2,7 +2,7 @@
 # from text lookup files. Now we begin to store all the values in the database
 # so text loading technique may or may not be useful in the future.
 
-# This module maps all the lookup fields into a single text field of the database, 
+# This module maps all the lookup fields into a single text field of the database,
 # making its content accessible through "vars" property. It also allows to prefill
 # the ActiveRecord object from a text lookup.
 
@@ -12,18 +12,18 @@
 
 module LoadableFromLookups
   UNWANTED_CHARS = /[^\w\d_ -]/
-  
+
   module ClassMethods
     attr_accessor :options
     LOOKUP_EXTENSIONS = { :php => ".array.php",
                           :ruby_hash => ".hash.rb",
-                          :lookup => ".lookup" }                           
+                          :lookup => ".lookup" }
 
     # finder
     def find_latest
       order("issued_at DESC").first
-    end  
-    
+    end
+
     # Iterate over all available lookups
     def each_lookup(&block)
       Dir.chdir(self.options[:dir]) do
@@ -39,7 +39,7 @@ module LoadableFromLookups
             yield obj, location_name
           end
         end
-      end      
+      end
     end
 
     def from_lookup(filename_part)
@@ -76,7 +76,7 @@ module LoadableFromLookups
         # obj.lookup_timestamp = mtime.to_i
         main_lookup_timestamp = mtime.to_i
       end
-        
+
       # Load all dependent lookups
       main_lookup_vars = nil
       begin
@@ -94,7 +94,7 @@ module LoadableFromLookups
               dep_data = Rails.cache.fetch(dep_filename + "_data_" + dep_mtime.to_s, :expires_in => 6.hours) do
                 self.read_lookup(dep_filename, dep_options[:format])
               end
-              self.data += ".merge(" + dep_data + ")"
+              self.data = self.data.strip + ".merge(" + dep_data + ")"
               # obj.lookup_filename += "+#{dep_filename}"
               # obj.lookup_timestamp = [obj.lookup_timestamp, dep_mtime].max
             end
@@ -114,7 +114,7 @@ module LoadableFromLookups
         vars_without_caching
   		end
     end
-    
+
     def vars_without_caching
 			begin
 				eval(data)
@@ -148,16 +148,16 @@ module LoadableFromLookups
         return self.attributes["issued_at"]
       end
     end
-    
+
     def vars=(values)
       str = "{\n"
       values.each do |key, value|
         str += "\"#{key}\" => \"#{value}\",\n"
       end
       str += "}"
-      write_attribute("data", str)      
+      write_attribute("data", str)
     end
-    
+
     def data=(str)
       write_attribute("data", str)
       @vars = nil # bust the cache
@@ -169,7 +169,7 @@ module LoadableFromLookups
       end
       read_attribute("data")
     end
-    
+
     def p_period(key, i)
       vars["_p#{key}_#{i}"]
     end
@@ -193,7 +193,7 @@ module LoadableFromLookups
     def d_period_with_dot(key, i)
       vars["_d#{key}.#{i}"]
     end
-    
+
     def hr_period(key, i)
       vars["_#{key}_hr_#{i}"]
     end
@@ -238,8 +238,8 @@ module LoadableFromLookups
       content
     end
   end
-  
-  # supported formats are :php and :ruby_hash 
+
+  # supported formats are :php and :ruby_hash
   def loadable_from_lookups(options)
     self.send :attr, :lookup_mtime, true
     self.send :attr, :lookup_timestamp, true
