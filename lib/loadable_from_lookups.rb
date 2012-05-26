@@ -74,7 +74,7 @@ module LoadableFromLookups
 							dep_data = Rails.cache.fetch(dep_filename + "_data_" + dep_mtime.to_s, :expires_in => 6.hours) do
 								obj.read_lookup(dep_filename, dep_options[:format])
 							end
-							obj.data += ".merge(" + dep_data + ")"
+							obj.data = obj.data.strip + ".merge(" + dep_data + ")"
 							obj.lookup_filename += "+#{dep_filename}"
 							obj.lookup_timestamp = [obj.lookup_timestamp, dep_mtime].max
 						end
