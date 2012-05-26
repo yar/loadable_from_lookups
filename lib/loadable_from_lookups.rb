@@ -36,8 +36,9 @@ module LoadableFromLookups
               .gsub(self.options[:unwanted_chars], "")
             obj = self.new
             obj.data = obj.read_lookup(filename)          
-            mtime = File.mtime(filename).to_i
-            obj.lookup_timestamp = mtime
+            mtime = File.mtime(filename)
+            obj.lookup_mtime = mtime
+            obj.lookup_timestamp = mtime.to_i
             obj.lookup_filename = filename
             yield obj, location_name
           end
@@ -51,11 +52,12 @@ module LoadableFromLookups
       # Load primary lookup
       Dir.chdir(self.options[:dir]) do
         filename = filename_part + self.options[:postfix] + LOOKUP_EXTENSIONS[self.options[:format]]
-        mtime = File.mtime(filename).to_i
-        obj.data = Rails.cache.fetch(filename + "_data_" + mtime.to_s, :expires_in => 6.hours) do # TODO (literal const.)
+        mtime = File.mtime(filename)
+        obj.data = Rails.cache.fetch(filename + "_data_" + mtime.to_i.to_s, :expires_in => 6.hours) do # TODO (literal const.)
           obj.read_lookup(filename)          
         end
-        obj.lookup_timestamp = mtime
+        obj.lookup_mtime = mtime
+        obj.lookup_timestamp = mtime.to_i
         obj.lookup_filename = filename
       end
         
@@ -100,7 +102,7 @@ module LoadableFromLookups
       end
       return obj
     rescue Errno::ENOENT
-			logger.error $!
+			logger.error "#{$!}"
       return nil
     end
   
@@ -126,7 +128,7 @@ module LoadableFromLookups
 			  if self.class.options[:exceptions_unchanged]
 			    raise
 				else
-  				raise "Cannot eval for forecast #{id}"
+  				raise "Cannot eval for forecast #{lookup_filename||id}"
 			  end
 			end
     end
@@ -184,35 +186,39 @@ module LoadableFromLookups
     # returns vars hash
     def read_lookup(path, format=nil)
       format ||= self.class.options[:format]
+
+      raw_content = File.read(path)
+
+      content = raw_content.filter_utf8
+      if content != raw_content
+        logger.error("UNICODE PROBLEM: characters illegal for utf8 found in #{path}, removing - watch out for misspelled words!")
+      end
+
       case format
       when :ruby_hash
-        content = File.read(path)
+        # do nothing
       when :php # old php format
-        content = File.read(path)
         content.gsub!("<?\n$vars = array(\n", "{")
         content.gsub!("<?$vars = array(\n", "{")
         content.gsub!(");\n?>", "}")
       when :lookup
-        content = File.read(path)
         content.gsub!('"', '\"')
-        content.gsub!(/^s(_.*)\|(.*)$/, '"\1" => "\2",')
-        content.gsub!(/^([^_][^|]*)\|(.*)$/, '"\1" => "\2",')
+        content.gsub!('#', '\#')
+        content.gsub!(/^s(_.*?)\|(.*?)$/, '"\1" => "\2",')
+        content.gsub!(/^([^_"][^|]*?)\|(.*?)$/, '"\1" => "\2",')
         content.gsub!('_top', '_max')
         content.gsub!('_bot', '_min')
         content.gsub!('rztop', 'rzmax')
         content.gsub!('rzbot', 'rzmin')
         content = "{" + content + "}"
       end
-      filtered_content = content.filter_utf8
-      if filtered_content != content
-        logger.error("Characters illegal for utf8 found in #{path}, removing - watch out for misspelled words!")
-      end
-      filtered_content
+      content
     end
   end
   
   # supported formats are :php and :ruby_hash 
   def loadable_from_lookups(options)
+    self.send :attr, :lookup_mtime, true
     self.send :attr, :lookup_timestamp, true
     self.send :attr, :lookup_filename, true
     self.send :extend, ClassMethods
