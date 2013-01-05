@@ -68,6 +68,7 @@ module LoadableFromLookups
 								dep_filename_part = obj.vars_without_caching[dep_options[:key]]
 							else
 								dep_filename_part = filename_part
+								dep_filename_part.gsub! /\.\d+$/, "" # mtn
 							end
 							dep_filename = dep_filename_part + dep_options[:postfix] + LOOKUP_EXTENSIONS[dep_options[:format]]
 							dep_mtime = File.mtime(dep_filename).to_i
