@@ -88,6 +88,7 @@ module LoadableFromLookups
                 dep_filename_part = main_lookup_vars[dep_options[:key]] # not used at snow
               else
                 dep_filename_part = self.lookup_filename_part
+                dep_filename_part.gsub! /\.\d+$/, "" # mtn
               end
               dep_filename = dep_filename_part + dep_options[:postfix] + ClassMethods::LOOKUP_EXTENSIONS[dep_options[:format]]
               dep_mtime = File.mtime(dep_filename).to_i
