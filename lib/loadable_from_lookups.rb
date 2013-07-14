@@ -8,7 +8,6 @@
 
 # Importing the records into the database is beyond the scope of this mixin because
 # it requires interaction of multiple models, e.g. missing locations, countries.
-require "iconv"
 # require "memcache_util"
 
 module LoadableFromLookups
@@ -227,10 +226,8 @@ module LoadableFromLookups
 end
 
 class String
-  @@ic = Iconv.new('UTF-8//IGNORE', 'UTF-8')
-
   # remove all chars illegal for utf8
   def filter_utf8
-    @@ic.iconv(self + ' ')[0..-2]
+    "#{self}".encode("UTF-8", :invalid => :replace, :undef => :replace, :replace => "?")
   end
 end
