@@ -21,7 +21,7 @@ module LoadableFromLookups
 
     # finder
     def find_latest
-      find :first, :order => "issued_at DESC"
+      order("issued_at DESC").first
     end  
     
     # Iterate over all available lookups
