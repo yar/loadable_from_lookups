@@ -223,6 +223,9 @@ module LoadableFromLookups
     self.options = options
     self.options[:unwanted_chars] ||= UNWANTED_CHARS
   end
+
+  class LookupFileMissingError < StandardError
+  end
 end
 
 class String
