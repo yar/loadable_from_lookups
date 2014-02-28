@@ -82,14 +82,14 @@ module LoadableFromLookups
 					end
 				end
 			rescue
-        logger.error $!
+        Rails.logger.error $!
 			end
 
       if obj.vars["_gmtissued"] # As in forecasts
         begin
           obj.issued_at = Time.gm(*(Time.parse(obj.vars["_gmtissued"])))
         rescue
-          logger.error "Wrong datetime: #{obj.vars["_gmtissued"]}, error message: #{$!}"
+          Rails.logger.error "Wrong datetime: #{obj.vars["_gmtissued"]}, error message: #{$!}"
           obj.issued_at = Time.now.utc
         end          
       else # As in metars
@@ -101,7 +101,7 @@ module LoadableFromLookups
       end
       return obj
     rescue Errno::ENOENT
-			logger.error "#{$!}"
+			Rails.logger.error "#{$!}"
       return nil
     end
   
@@ -207,7 +207,7 @@ module LoadableFromLookups
       end
       filtered_content = content.filter_utf8
       if filtered_content != content
-        logger.error("Characters illegal for utf8 found in #{path}, removing - watch out for misspelled words!")
+        Rails.logger.error("Characters illegal for utf8 found in #{path}, removing - watch out for misspelled words!")
       end
       filtered_content
     end
