@@ -31,14 +31,11 @@ module LoadableFromLookups
           if filename.include?(LOOKUP_EXTENSIONS[self.options[:format]])
             location_name = filename \
               .gsub(LOOKUP_EXTENSIONS[self.options[:format]], "") \
-              .gsub(self.options[:postfix], "") \
-              .gsub(self.options[:unwanted_chars], "")
-            obj = self.new
-            obj.data = obj.read_lookup(filename)          
-            mtime = File.mtime(filename)
-            obj.lookup_mtime = mtime
-            obj.lookup_timestamp = mtime.to_i
-            obj.lookup_filename = filename
+              .gsub(self.options[:postfix], "")
+
+            next if self.options[:unwanted_chars] && location_name =~ self.options[:unwanted_chars]
+
+            obj = from_lookup(location_name)
             yield obj, location_name
           end
         end
@@ -49,80 +46,78 @@ module LoadableFromLookups
       obj = self.new
 
       # Load primary lookup
-      Dir.chdir(self.options[:dir]) do
-        filename = filename_part + self.options[:postfix] + LOOKUP_EXTENSIONS[self.options[:format]]
-        mtime = File.mtime(filename)
-        obj.data = Rails.cache.fetch(filename + "_data_" + mtime.to_i.to_s, :expires_in => 6.hours) do # TODO (literal const.)
-          obj.read_lookup(filename)          
+      obj.lookup_filename_part = filename_part
+      filename = filename_part + self.options[:postfix] + LOOKUP_EXTENSIONS[self.options[:format]]
+      obj.lookup_filename = filename
+      if self.options[:timestamp_method]
+        obj.lookup_timestamp = self.options[:timestamp_method].call(filename_part)
+      else
+        obj.lookup_timestamp = obj.load_data
+      end
+      obj.lookup_mtime = Time.at(obj.lookup_timestamp)
+      return obj
+    end
+
+  end
+
+  module InstanceMethods
+    def load_data
+      self._tried_to_load_data = true
+      options = self.class.options
+      # Load primary lookup
+      main_lookup_timestamp = nil
+      Dir.chdir(options[:dir]) do
+        mtime = File.mtime(self.lookup_filename)
+        self.data = Rails.cache.fetch(self.lookup_filename + "_data_" + mtime.to_i.to_s, :expires_in => 6.hours) do # TODO (literal const.)
+          self.read_lookup(self.lookup_filename)
         end
-        obj.lookup_mtime = mtime
-        obj.lookup_timestamp = mtime.to_i
-        obj.lookup_filename = filename
+        # TODO: what if timestamp_method is not provided?
+        # obj.lookup_mtime = mtime
+        # obj.lookup_timestamp = mtime.to_i
+        main_lookup_timestamp = mtime.to_i
       end
         
       # Load all dependent lookups
-			begin
-				if options[:dependent]
-					options[:dependent].each do |dep_options|
-						Dir.chdir(dep_options[:dir]) do
-							if dep_options[:key]
-								dep_filename_part = obj.vars_without_caching[dep_options[:key]]
-							else
-								dep_filename_part = filename_part
-							end
-							dep_filename = dep_filename_part + dep_options[:postfix] + LOOKUP_EXTENSIONS[dep_options[:format]]
-							dep_mtime = File.mtime(dep_filename).to_i
-							dep_data = Rails.cache.fetch(dep_filename + "_data_" + dep_mtime.to_s, :expires_in => 6.hours) do
-								obj.read_lookup(dep_filename, dep_options[:format])
-							end
-							obj.data += ".merge(" + dep_data + ")"
-							obj.lookup_filename += "+#{dep_filename}"
-							obj.lookup_timestamp = [obj.lookup_timestamp, dep_mtime].max
-						end
-					end
-				end
-			rescue
+      main_lookup_vars = nil
+      begin
+        if options[:dependent]
+          options[:dependent].each do |dep_options|
+            Dir.chdir(dep_options[:dir]) do
+              if dep_options[:key]
+                main_lookup_vars = self.vars_without_caching
+                dep_filename_part = main_lookup_vars[dep_options[:key]] # not used at snow
+              else
+                dep_filename_part = self.lookup_filename_part
+              end
+              dep_filename = dep_filename_part + dep_options[:postfix] + ClassMethods::LOOKUP_EXTENSIONS[dep_options[:format]]
+              dep_mtime = File.mtime(dep_filename).to_i
+              dep_data = Rails.cache.fetch(dep_filename + "_data_" + dep_mtime.to_s, :expires_in => 6.hours) do
+                self.read_lookup(dep_filename, dep_options[:format])
+              end
+              self.data += ".merge(" + dep_data + ")"
+              # obj.lookup_filename += "+#{dep_filename}"
+              # obj.lookup_timestamp = [obj.lookup_timestamp, dep_mtime].max
+            end
+          end
+        end
+      rescue
         logger.error $!
-			end
-
-      if obj.vars["_gmtissued"] # As in forecasts
-        begin
-          obj.issued_at = Time.gm(*(Time.parse(obj.vars["_gmtissued"])))
-        rescue
-          logger.error "Wrong datetime: #{obj.vars["_gmtissued"]}, error message: #{$!}"
-          obj.issued_at = Time.now.utc
-        end          
-      else # As in metars
-        begin
-          obj.issued_at = Time.parse(obj.vars["_date0"] + " " + obj.vars["_time0"])
-        rescue
-          obj.issued_at = Time.now.utc # Silently! (TODO)
-        end          
       end
-      return obj
+      return main_lookup_timestamp
     rescue Errno::ENOENT
-			logger.error "#{$!}"
+      logger.error "#{$!}"
       return nil
     end
-  
-  end
-    
-  module InstanceMethods
+
     def vars
-      return @vars if @vars
-      
-      tmp = Rails.cache.fetch("#{self.class.to_s}/#{lookup_filename||id}/#{lookup_timestamp}", :expires_in => 6.hours) do
+      @vars ||= Rails.cache.fetch("#{self.class.to_s}/#{lookup_filename||id}/#{lookup_timestamp}", :expires_in => 6.hours) do
         vars_without_caching
   		end
-      return @vars = tmp.dup
     end
     
     def vars_without_caching
-      # if data.mb_chars.size == 65535
-      #   data.gsub! /,[^,]*\Z/m, "}"
-      # end
 			begin
-				eval(read_attribute("data"))      
+				eval(data)
 			rescue SyntaxError
 			  if self.class.options[:exceptions_unchanged]
 			    raise
@@ -130,6 +125,28 @@ module LoadableFromLookups
   				raise "Cannot eval for forecast #{lookup_filename||id}"
 			  end
 			end
+    end
+
+    def issued_at
+      if self.id || self.attributes["issued_at"]
+        return self.attributes["issued_at"]
+      else
+        if vars["_gmtissued"] # As in forecasts
+          begin
+            write_attribute :issued_at, Time.gm(*(Time.parse(vars["_gmtissued"])))
+          rescue
+            logger.error "Wrong datetime: #{vars["_gmtissued"]}, error message: #{$!}"
+            write_attribute :issued_at, Time.now.utc
+          end
+        else # As in metars
+          begin
+            write_attribute :issued_at, Time.parse(vars["_date0"] + " " + vars["_time0"])
+          rescue
+            write_attribute :issued_at, Time.now.utc # Silently! (TODO)
+          end
+        end
+        return self.attributes["issued_at"]
+      end
     end
     
     def vars=(values)
@@ -144,6 +161,13 @@ module LoadableFromLookups
     def data=(str)
       write_attribute("data", str)
       @vars = nil # bust the cache
+    end
+
+    def data
+      unless self._tried_to_load_data || self.id
+        load_data
+      end
+      read_attribute("data")
     end
     
     def p_period(key, i)
@@ -218,6 +242,8 @@ module LoadableFromLookups
     self.send :attr, :lookup_mtime, true
     self.send :attr, :lookup_timestamp, true
     self.send :attr, :lookup_filename, true
+    self.send :attr, :lookup_filename_part, true
+    self.send :attr, :_tried_to_load_data, true
     self.send :extend, ClassMethods
     self.send :include, InstanceMethods
     self.options = options
