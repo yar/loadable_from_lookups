@@ -2,7 +2,7 @@
 # from text lookup files. Now we begin to store all the values in the database
 # so text loading technique may or may not be useful in the future.
 
-# This module maps all the lookup fields into a single text field of the database, 
+# This module maps all the lookup fields into a single text field of the database,
 # making its content accessible through "vars" property. It also allows to prefill
 # the ActiveRecord object from a text lookup.
 
@@ -12,18 +12,18 @@
 
 module LoadableFromLookups
   UNWANTED_CHARS = /[^\w\d_ -]/
-  
+
   module ClassMethods
     attr_accessor :options
     LOOKUP_EXTENSIONS = { :php => ".array.php",
                           :ruby_hash => ".hash.rb",
-                          :lookup => ".lookup" }                           
+                          :lookup => ".lookup" }
 
     # finder
     def find_latest
-      find :first, :order => "issued_at DESC"
-    end  
-    
+      order('issued_at DESC')
+    end
+
     # Iterate over all available lookups
     def each_lookup(&block)
       Dir.chdir(self.options[:dir]) do
@@ -34,7 +34,7 @@ module LoadableFromLookups
               .gsub(self.options[:postfix], "") \
               .gsub(self.options[:unwanted_chars], "")
             obj = self.new
-            obj.data = obj.read_lookup(filename)          
+            obj.data = obj.read_lookup(filename)
             mtime = File.mtime(filename)
             obj.lookup_mtime = mtime
             obj.lookup_timestamp = mtime.to_i
@@ -42,7 +42,7 @@ module LoadableFromLookups
             yield obj, location_name
           end
         end
-      end      
+      end
     end
 
     def from_lookup(filename_part)
@@ -53,13 +53,13 @@ module LoadableFromLookups
         filename = filename_part + self.options[:postfix] + LOOKUP_EXTENSIONS[self.options[:format]]
         mtime = File.mtime(filename)
         obj.data = Rails.cache.fetch(filename + "_data_" + mtime.to_i.to_s, :expires_in => 6.hours) do # TODO (literal const.)
-          obj.read_lookup(filename)          
+          obj.read_lookup(filename)
         end
         obj.lookup_mtime = mtime
         obj.lookup_timestamp = mtime.to_i
         obj.lookup_filename = filename
       end
-        
+
       # Load all dependent lookups
 			begin
 				if options[:dependent]
@@ -91,38 +91,38 @@ module LoadableFromLookups
         rescue
           Rails.logger.error "Wrong datetime: #{obj.vars["_gmtissued"]}, error message: #{$!}"
           obj.issued_at = Time.now.utc
-        end          
+        end
       else # As in metars
         begin
           obj.issued_at = Time.parse(obj.vars["_date0"] + " " + obj.vars["_time0"])
         rescue
           obj.issued_at = Time.now.utc # Silently! (TODO)
-        end          
+        end
       end
       return obj
     rescue Errno::ENOENT
 			Rails.logger.error "#{$!}"
       return nil
     end
-  
+
   end
-    
+
   module InstanceMethods
     def vars
       return @vars if @vars
-      
+
       tmp = Rails.cache.fetch("#{self.class.to_s}/#{lookup_filename||id}/#{lookup_timestamp}", :expires_in => 6.hours) do
         vars_without_caching
   		end
       return @vars = tmp.dup
     end
-    
+
     def vars_without_caching
       # if data.mb_chars.size == 65535
       #   data.gsub! /,[^,]*\Z/m, "}"
       # end
 			begin
-				eval(read_attribute("data"))      
+				eval(read_attribute("data"))
 			rescue SyntaxError
 			  if self.class.options[:exceptions_unchanged]
 			    raise
@@ -131,21 +131,21 @@ module LoadableFromLookups
 			  end
 			end
     end
-    
+
     def vars=(values)
       str = "{\n"
       values.each do |key, value|
         str += "\"#{key}\" => \"#{value}\",\n"
       end
       str += "}"
-      write_attribute("data", str)      
+      write_attribute("data", str)
     end
-    
+
     def data=(str)
       write_attribute("data", str)
       @vars = nil # bust the cache
     end
-    
+
     def p_period(key, i)
       vars["_p#{key}_#{i}"]
     end
@@ -169,7 +169,7 @@ module LoadableFromLookups
     def d_period_with_dot(key, i)
       vars["_d#{key}.#{i}"]
     end
-    
+
     def hr_period(key, i)
       vars["_#{key}_hr_#{i}"]
     end
@@ -212,8 +212,8 @@ module LoadableFromLookups
       filtered_content
     end
   end
-  
-  # supported formats are :php and :ruby_hash 
+
+  # supported formats are :php and :ruby_hash
   def loadable_from_lookups(options)
     self.send :attr, :lookup_mtime, true
     self.send :attr, :lookup_timestamp, true
