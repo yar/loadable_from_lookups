@@ -2,28 +2,29 @@
 # from text lookup files. Now we begin to store all the values in the database
 # so text loading technique may or may not be useful in the future.
 
-# This module maps all the lookup fields into a single text field of the database, 
+# This module maps all the lookup fields into a single text field of the database,
 # making its content accessible through "vars" property. It also allows to prefill
 # the ActiveRecord object from a text lookup.
 
 # Importing the records into the database is beyond the scope of this mixin because
 # it requires interaction of multiple models, e.g. missing locations, countries.
 # require "memcache_util"
+require 'projection'
 
 module LoadableFromLookups
   UNWANTED_CHARS = /[^\w\d_ -]/
-  
+
   module ClassMethods
     attr_accessor :options
     LOOKUP_EXTENSIONS = { :php => ".array.php",
                           :ruby_hash => ".hash.rb",
-                          :lookup => ".lookup" }                           
+                          :lookup => ".lookup" }
 
     # finder
     def find_latest
       order("issued_at DESC").first
-    end  
-    
+    end
+
     # Iterate over all available lookups
     def each_lookup(&block)
       Dir.chdir(self.options[:dir]) do
@@ -39,7 +40,7 @@ module LoadableFromLookups
             yield obj, location_name
           end
         end
-      end      
+      end
     end
 
     def from_lookup(filename_part)
@@ -66,47 +67,73 @@ module LoadableFromLookups
       options = self.class.options
       # Load primary lookup
       main_lookup_timestamp = nil
-      Dir.chdir(options[:dir]) do
-        mtime = File.mtime(self.lookup_filename)
-        self.data = Rails.cache.fetch(self.lookup_filename + "_data_" + mtime.to_i.to_s, :expires_in => 6.hours) do # TODO (literal const.)
-          self.read_lookup(self.lookup_filename)
-        end
-        # TODO: what if timestamp_method is not provided?
-        # obj.lookup_mtime = mtime
-        # obj.lookup_timestamp = mtime.to_i
-        main_lookup_timestamp = mtime.to_i
+      lookup_path = File.join(options[:dir], self.lookup_filename)
+      logger.debug "Going to read main lookup #{lookup_path}"
+
+      mtime = File.mtime(lookup_path)
+      logger.debug "Main lookup #{lookup_path} mtime is #{mtime}"
+      cache_key = self.lookup_filename + "_data_" + mtime.to_i.to_s
+      self.data = Rails.cache.read(cache_key)
+      if self.data
+        logger.debug "Found lookup #{lookup_path} data in the cache"
+      else
+        logger.debug "Regenerating lookup #{lookup_path} data"
+        self.data = self.read_lookup(lookup_path)
+        Rails.cache.write(cache_key, self.data, :expires_in => 6.hours)
       end
-        
+
+      # TODO: what if timestamp_method is not provided?
+      # obj.lookup_mtime = mtime
+      # obj.lookup_timestamp = mtime.to_i
+      main_lookup_timestamp = mtime.to_i
+
+      logger.debug "Finished reading main lookup #{self.lookup_filename}"
+
       # Load all dependent lookups
       main_lookup_vars = nil
-      begin
-        if options[:dependent]
-          options[:dependent].each do |dep_options|
-            Dir.chdir(dep_options[:dir]) do
-              if dep_options[:key]
-                main_lookup_vars = self.vars_without_caching
-                dep_filename_part = main_lookup_vars[dep_options[:key]] # not used at snow
-              else
-                dep_filename_part = self.lookup_filename_part
-              end
-              dep_filename = dep_filename_part + dep_options[:postfix] + ClassMethods::LOOKUP_EXTENSIONS[dep_options[:format]]
-              dep_mtime = File.mtime(dep_filename).to_i
-              dep_data = Rails.cache.fetch(dep_filename + "_data_" + dep_mtime.to_s, :expires_in => 6.hours) do
-                self.read_lookup(dep_filename, dep_options[:format])
-              end
-              self.data += ".merge(" + dep_data + ")"
-              # obj.lookup_filename += "+#{dep_filename}"
-              # obj.lookup_timestamp = [obj.lookup_timestamp, dep_mtime].max
+      if options[:dependent]
+        options[:dependent].each do |dep_options|
+          begin
+            if dep_options[:key]
+              main_lookup_vars = self.vars_without_caching
+              dep_filename_part = main_lookup_vars[dep_options[:key]] # not used at snow
+            else
+              dep_filename_part = self.lookup_filename_part
             end
+            dep_filename = dep_filename_part + dep_options[:postfix] + ClassMethods::LOOKUP_EXTENSIONS[dep_options[:format]]
+            dep_path = File.join(dep_options[:dir], dep_filename)
+            logger.debug "Going to read dependent lookup #{dep_path}"
+
+            dep_mtime = File.mtime(dep_path).to_i
+            logger.debug "Dependent lookup #{dep_path} mtime is #{dep_mtime}"
+            dep_cache_key = dep_filename + "_data_" + dep_mtime.to_s
+
+            dep_data = Rails.cache.read(dep_cache_key)
+            if dep_data
+              logger.debug "Found lookup #{dep_path} data in the cache"
+            else
+              logger.debug "Regenerating lookup #{dep_path} data"
+              dep_data = self.read_lookup(dep_path, dep_options[:format])
+              Rails.cache.write(dep_cache_key, dep_data, :expires_in => 6.hours)
+            end
+            self.data += ".merge(" + dep_data + ")"
+            # obj.lookup_filename += "+#{dep_filename}"
+            # obj.lookup_timestamp = [obj.lookup_timestamp, dep_mtime].max
+
+            logger.debug "Finished reading dependent lookup #{dep_path}"
+          rescue
+            logger.error "Problem loading dependent lookup #{dep_path} for main #{lookup_filename}"
+            logger.error $!
+            # raise
           end
         end
-      rescue
-        logger.error $!
       end
       return main_lookup_timestamp
     rescue Errno::ENOENT
-      logger.error "#{$!}"
-      return nil
+      logger.error "Problem loading lookup (no such file?) #{lookup_path}"
+      # logger.error $!
+      # return nil
+      raise
     end
 
     def vars
@@ -114,7 +141,7 @@ module LoadableFromLookups
         vars_without_caching
   		end
     end
-    
+
     def vars_without_caching
 			begin
 				eval(data)
@@ -148,16 +175,16 @@ module LoadableFromLookups
         return self.attributes["issued_at"]
       end
     end
-    
+
     def vars=(values)
       str = "{\n"
       values.each do |key, value|
         str += "\"#{key}\" => \"#{value}\",\n"
       end
       str += "}"
-      write_attribute("data", str)      
+      write_attribute("data", str)
     end
-    
+
     def data=(str)
       write_attribute("data", str)
       @vars = nil # bust the cache
@@ -169,7 +196,7 @@ module LoadableFromLookups
       end
       read_attribute("data")
     end
-    
+
     def p_period(key, i)
       vars["_p#{key}_#{i}"]
     end
@@ -193,7 +220,7 @@ module LoadableFromLookups
     def d_period_with_dot(key, i)
       vars["_d#{key}.#{i}"]
     end
-    
+
     def hr_period(key, i)
       vars["_#{key}_hr_#{i}"]
     end
@@ -236,8 +263,8 @@ module LoadableFromLookups
       filtered_content
     end
   end
-  
-  # supported formats are :php and :ruby_hash 
+
+  # supported formats are :php and :ruby_hash
   def loadable_from_lookups(options)
     self.send :attr, :lookup_mtime, true
     self.send :attr, :lookup_timestamp, true
